@@ -16,17 +16,17 @@ contract InheritanceVaultTest is Test {
     // Test contracts
     InheritanceVault public vault;
     MockVerifier public mockVerifier;
-    
+
     // Test accounts
     address public owner = address(0x1);
     address public heir = address(0x2);
     address public anyone = address(0x3);
-    
+
     // Test parameters
     bytes32 public constant HEIR_ROOT = keccak256("test_heir_root");
     uint256 public constant HEARTBEAT_INTERVAL = 1 days;
     uint256 public constant CHALLENGE_WINDOW = 7 days;
-    
+
     // Test data for claims
     bytes public constant MOCK_PROOF = "mock_proof_data";
     bytes32 public constant NULLIFIER_HASH = keccak256("test_nullifier");
@@ -36,16 +36,11 @@ contract InheritanceVaultTest is Test {
     function setUp() public {
         // Deploy mock verifier
         mockVerifier = new MockVerifier();
-        
+
         // Deploy vault as owner
         vm.prank(owner);
-        vault = new InheritanceVault(
-            address(mockVerifier),
-            HEIR_ROOT,
-            HEARTBEAT_INTERVAL,
-            CHALLENGE_WINDOW
-        );
-        
+        vault = new InheritanceVault(address(mockVerifier), HEIR_ROOT, HEARTBEAT_INTERVAL, CHALLENGE_WINDOW);
+
         // Label addresses for better trace readability
         vm.label(owner, "Owner");
         vm.label(heir, "Heir");
@@ -65,11 +60,11 @@ contract InheritanceVaultTest is Test {
         assertEq(vault.challengeWindow(), CHALLENGE_WINDOW);
         assertEq(vault.owner(), owner);
         assertEq(vault.challengeWindowEnd(), 0);
-        
+
         // Check initial deadline
         uint256 expectedDeadline = block.timestamp + HEARTBEAT_INTERVAL;
         assertEq(vault.nextDeadline(), expectedDeadline);
-        
+
         // Check initial state
         assertTrue(vault.isAlive());
         assertFalse(vault.inExpiry());
@@ -103,13 +98,13 @@ contract InheritanceVaultTest is Test {
 
     function test_OwnerCanKeepAlive() public {
         uint256 initialDeadline = vault.nextDeadline();
-        
+
         // Fast forward some time but stay alive
         vm.warp(block.timestamp + 12 hours);
-        
+
         vm.prank(owner);
         vault.keepAlive();
-        
+
         uint256 newDeadline = vault.nextDeadline();
         assertEq(newDeadline, block.timestamp + HEARTBEAT_INTERVAL);
         assertTrue(newDeadline > initialDeadline);
@@ -125,7 +120,7 @@ contract InheritanceVaultTest is Test {
     function test_CannotKeepAliveWhenExpired() public {
         // Fast forward past deadline
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
-        
+
         vm.prank(owner);
         vm.expectRevert(InheritanceVault.NotAlive.selector);
         vault.keepAlive();
@@ -138,15 +133,15 @@ contract InheritanceVaultTest is Test {
     function test_AnyoneCanStartExpiryAfterDeadline() public {
         // Fast forward past deadline
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
-        
+
         vm.prank(anyone);
         vault.startExpiry();
-        
+
         assertFalse(vault.isAlive());
         assertTrue(vault.inExpiry());
         assertTrue(vault.inChallengeWindow());
         assertFalse(vault.claimOpen());
-        
+
         uint256 expectedWindowEnd = block.timestamp + CHALLENGE_WINDOW;
         assertEq(vault.challengeWindowEnd(), expectedWindowEnd);
     }
@@ -162,7 +157,7 @@ contract InheritanceVaultTest is Test {
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         vm.prank(anyone);
         vault.startExpiry();
-        
+
         // Try to start again
         vm.prank(anyone);
         vm.expectRevert(InheritanceVault.ExpiryNotStarted.selector);
@@ -174,18 +169,18 @@ contract InheritanceVaultTest is Test {
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         vm.prank(anyone);
         vault.startExpiry();
-        
+
         // Owner revokes during challenge window
         vm.warp(block.timestamp + 1 days); // Still within 7-day window
         vm.prank(owner);
         vault.revokeExpiry();
-        
+
         assertTrue(vault.isAlive());
         assertFalse(vault.inExpiry());
         assertFalse(vault.inChallengeWindow());
         assertFalse(vault.claimOpen());
         assertEq(vault.challengeWindowEnd(), 0);
-        
+
         // Check that deadline was refreshed
         uint256 expectedDeadline = block.timestamp + HEARTBEAT_INTERVAL;
         assertEq(vault.nextDeadline(), expectedDeadline);
@@ -196,10 +191,10 @@ contract InheritanceVaultTest is Test {
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         vm.prank(anyone);
         vault.startExpiry();
-        
+
         // Fast forward past challenge window
         vm.warp(block.timestamp + CHALLENGE_WINDOW + 1);
-        
+
         vm.prank(owner);
         vm.expectRevert(InheritanceVault.ChallengeWindowOver.selector);
         vault.revokeExpiry();
@@ -210,7 +205,7 @@ contract InheritanceVaultTest is Test {
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         vm.prank(anyone);
         vault.startExpiry();
-        
+
         vm.prank(anyone);
         vm.expectRevert(Ownable.Unauthorized.selector);
         vault.revokeExpiry();
@@ -225,14 +220,14 @@ contract InheritanceVaultTest is Test {
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         vm.prank(anyone);
         vault.startExpiry();
-        
+
         // Fast forward past challenge window
         vm.warp(block.timestamp + CHALLENGE_WINDOW + 1);
-        
+
         // Heir claims
         vm.prank(heir);
         vault.claim(MOCK_PROOF, NULLIFIER_HASH, SIGNAL, heir, CLAIM_AMOUNT);
-        
+
         // Check nullifier is now used
         assertTrue(vault.usedNullifier(NULLIFIER_HASH));
     }
@@ -242,10 +237,10 @@ contract InheritanceVaultTest is Test {
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         vm.prank(anyone);
         vault.startExpiry();
-        
+
         // Try to claim during challenge window
         vm.warp(block.timestamp + 1 days); // Still within window
-        
+
         vm.prank(heir);
         vm.expectRevert(InheritanceVault.ClaimNotOpen.selector);
         vault.claim(MOCK_PROOF, NULLIFIER_HASH, SIGNAL, heir, CLAIM_AMOUNT);
@@ -263,11 +258,11 @@ contract InheritanceVaultTest is Test {
         vm.prank(anyone);
         vault.startExpiry();
         vm.warp(block.timestamp + CHALLENGE_WINDOW + 1);
-        
+
         // First claim succeeds
         vm.prank(heir);
         vault.claim(MOCK_PROOF, NULLIFIER_HASH, SIGNAL, heir, CLAIM_AMOUNT);
-        
+
         // Second claim with same nullifier fails
         vm.prank(heir);
         vm.expectRevert(InheritanceVault.NullifierAlreadyUsed.selector);
@@ -280,7 +275,7 @@ contract InheritanceVaultTest is Test {
         vm.prank(anyone);
         vault.startExpiry();
         vm.warp(block.timestamp + CHALLENGE_WINDOW + 1);
-        
+
         vm.prank(heir);
         vm.expectRevert(InheritanceVault.ZeroAddress.selector);
         vault.claim(MOCK_PROOF, NULLIFIER_HASH, SIGNAL, address(0), CLAIM_AMOUNT);
@@ -292,10 +287,10 @@ contract InheritanceVaultTest is Test {
 
     function test_OwnerCanUpdateRoot() public {
         bytes32 newRoot = keccak256("new_heir_root");
-        
+
         vm.prank(owner);
         vault.setRoot(newRoot);
-        
+
         assertEq(vault.heirRoot(), newRoot);
     }
 
@@ -308,7 +303,7 @@ contract InheritanceVaultTest is Test {
     function test_CannotUpdateRootWhenNotAlive() public {
         // Make vault not alive
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
-        
+
         bytes32 newRoot = keccak256("new_heir_root");
         vm.prank(owner);
         vm.expectRevert(InheritanceVault.NotAlive.selector);
@@ -317,10 +312,10 @@ contract InheritanceVaultTest is Test {
 
     function test_OwnerCanTransferOwnership() public {
         address newOwner = address(0x999);
-        
+
         vm.prank(owner);
         vault.transferOwnership(newOwner);
-        
+
         assertEq(vault.owner(), newOwner);
     }
 
@@ -332,10 +327,10 @@ contract InheritanceVaultTest is Test {
 
     function test_OwnerCanUpdateVerifier() public {
         MockVerifier newVerifier = new MockVerifier();
-        
+
         vm.prank(owner);
         vault.setVerifier(address(newVerifier));
-        
+
         assertEq(address(vault.verifier()), address(newVerifier));
     }
 
@@ -346,29 +341,29 @@ contract InheritanceVaultTest is Test {
     function test_CompleteLifecycleFlow() public {
         // Phase 1: Vault is alive, owner sends heartbeats
         assertTrue(vault.isAlive());
-        
+
         vm.prank(owner);
         vault.keepAlive();
         assertTrue(vault.isAlive());
-        
+
         // Phase 2: Owner misses heartbeat, expiry starts
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         assertFalse(vault.isAlive());
-        
+
         vm.prank(anyone);
         vault.startExpiry();
         assertTrue(vault.inExpiry());
         assertTrue(vault.inChallengeWindow());
-        
+
         // Phase 3: Challenge window passes, claiming opens
         vm.warp(block.timestamp + CHALLENGE_WINDOW + 1);
         assertFalse(vault.inChallengeWindow());
         assertTrue(vault.claimOpen());
-        
+
         // Phase 4: Heir claims successfully
         vm.prank(heir);
         vault.claim(MOCK_PROOF, NULLIFIER_HASH, SIGNAL, heir, CLAIM_AMOUNT);
-        
+
         assertTrue(vault.usedNullifier(NULLIFIER_HASH));
     }
 
@@ -377,20 +372,20 @@ contract InheritanceVaultTest is Test {
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         vm.prank(anyone);
         vault.startExpiry();
-        
+
         // Owner recovers during challenge window
         vm.warp(block.timestamp + 1 days);
         vm.prank(owner);
         vault.revokeExpiry();
-        
+
         // Vault is back to alive state
         assertTrue(vault.isAlive());
         assertFalse(vault.inExpiry());
-        
+
         // Owner can continue sending heartbeats
         vm.prank(owner);
         vault.keepAlive();
-        
+
         // Even if we fast forward past original challenge window,
         // claiming should not be available
         vm.warp(block.timestamp + CHALLENGE_WINDOW + 1);
@@ -410,7 +405,7 @@ contract InheritanceVaultTest is Test {
 
     function test_ExpiryStartedEvent() public {
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
-        
+
         vm.prank(anyone);
         vm.expectEmit(true, true, true, true);
         emit InheritanceVault.ExpiryStarted(block.timestamp, block.timestamp + CHALLENGE_WINDOW);
@@ -423,7 +418,7 @@ contract InheritanceVaultTest is Test {
         vm.prank(anyone);
         vault.startExpiry();
         vm.warp(block.timestamp + CHALLENGE_WINDOW + 1);
-        
+
         vm.prank(heir);
         vm.expectEmit(true, true, true, true);
         emit InheritanceVault.Claimed(NULLIFIER_HASH, heir, CLAIM_AMOUNT, SIGNAL);
@@ -440,14 +435,14 @@ contract InheritanceVaultTest is Test {
         assertFalse(vault.inExpiry());
         assertFalse(vault.inChallengeWindow());
         assertFalse(vault.claimOpen());
-        
+
         // After deadline passed: Dead but no expiry started
         vm.warp(block.timestamp + HEARTBEAT_INTERVAL + 1);
         assertFalse(vault.isAlive());
         assertFalse(vault.inExpiry());
         assertFalse(vault.inChallengeWindow());
         assertFalse(vault.claimOpen());
-        
+
         // After expiry started: In challenge window
         vm.prank(anyone);
         vault.startExpiry();
@@ -455,7 +450,7 @@ contract InheritanceVaultTest is Test {
         assertTrue(vault.inExpiry());
         assertTrue(vault.inChallengeWindow());
         assertFalse(vault.claimOpen());
-        
+
         // After challenge window: Claims open
         vm.warp(block.timestamp + CHALLENGE_WINDOW + 1);
         assertFalse(vault.isAlive());
